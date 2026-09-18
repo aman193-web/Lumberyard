@@ -237,11 +237,21 @@ export function LumberyardSetup() {
     },
   ];
 
+  // What each step still needs, from the same checklist the go-live gate uses.
+  const stepStatus = new Map<Step, { done: boolean; missing: typeof checklist }>();
+  STEPS.forEach(meta => stepStatus.set(meta.id, { done: true, missing: [] }));
+  checklist.forEach(item => {
+    const entry = stepStatus.get(item.step)!;
+    if (!item.done) { entry.done = false; entry.missing.push(item); }
+  });
+  const currentStatus = stepStatus.get(step)!;
+
   const doneCount = checklist.filter(c => c.done).length;
   const readinessScore = Math.round((doneCount / checklist.length) * 100);
   const canGoLive = readinessScore >= 80;
 
-  const progressPct = Math.round((completedSteps.size / LAST_STEP) * 100);
+  const completedStepCount = STEPS.filter(meta => stepStatus.get(meta.id)?.done).length;
+  const progressPct = Math.round((completedStepCount / LAST_STEP) * 100);
   const currentStepMeta = STEPS.find(s => s.id === step)!;
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -303,7 +313,7 @@ export function LumberyardSetup() {
           {/* Step chips */}
           <div className="flex flex-wrap gap-2">
             {STEPS.map(s => {
-              const isDone = completedSteps.has(s.id);
+              const isDone = stepStatus.get(s.id)?.done ?? false;
               const isCurrent = s.id === step;
               return (
                 <button
@@ -323,6 +333,30 @@ export function LumberyardSetup() {
                 </button>
               );
             })}
+          </div>
+
+          {/* What this step still needs */}
+          <div className={`flex items-start gap-2.5 px-4 py-3 rounded-xl border ${
+            currentStatus.done
+              ? "bg-green-50 border-green-200"
+              : "bg-amber-50 border-amber-200"
+          }`}>
+            {currentStatus.done
+              ? <CheckCircle size={14} className="text-green-600 flex-shrink-0 mt-0.5" />
+              : <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />}
+            <div className="text-xs leading-relaxed">
+              {currentStatus.done ? (
+                <span className="text-green-800">
+                  <span className="font-semibold">{currentStepMeta.label} is complete.</span>{" "}
+                  It counts toward your go-live readiness.
+                </span>
+              ) : (
+                <span className="text-amber-800">
+                  <span className="font-semibold">Still needed here:</span>{" "}
+                  {currentStatus.missing.map(item => item.detail.toLowerCase()).join("; ")}.
+                </span>
+              )}
+            </div>
           </div>
 
           {/* ══ STEP CARDS ════════════════════════════════════════════════════ */}
@@ -667,20 +701,14 @@ export function LumberyardSetup() {
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex items-center gap-3 flex-wrap">
                 <button
                   onClick={() => advance(6)}
-                  disabled={!catalogStepSatisfied}
-                  className={`font-semibold px-6 py-2.5 rounded-xl text-sm transition-colors ${
-                    catalogStepSatisfied
-                      ? "bg-amber-500 hover:bg-amber-600 text-white"
-                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                  }`}
+                  className="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-colors"
                 >
                   Save and continue
                 </button>
                 {!catalogStepSatisfied && (
                   <span className="text-xs text-slate-500">
-                    {catalogImport
-                      ? `Reach ${GO_LIVE_COVERAGE_FLOOR}% confirmed-match coverage to finish this step.`
-                      : "Import your catalog to continue."}
+                    You can carry on and come back — matching is saved. This step stays open on
+                    the go-live checklist until coverage reaches {GO_LIVE_COVERAGE_FLOOR}%.
                   </span>
                 )}
               </div>
